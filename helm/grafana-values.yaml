@@ -1,0 +1,40 @@
+adminPassword: admin
+
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        url: http://prometheus-server.observability.svc.cluster.local:80
+        isDefault: true
+        jsonData:
+          exemplarTraceIdDestinations:
+            - name: traceID
+              datasourceUid: tempo
+      - name: Tempo
+        type: tempo
+        uid: tempo
+        url: http://tempo.observability.svc.cluster.local:3200
+        jsonData:
+          tracesToLogsV2:
+            datasourceUid: loki
+            filterByTraceID: true
+            filterBySpanID: false
+          tracesToMetrics:
+            datasourceUid: prometheus
+          nodeGraph:
+            enabled: true
+          serviceMap:
+            datasourceUid: prometheus
+      - name: Loki
+        type: loki
+        uid: loki
+        url: http://loki-gateway.observability.svc.cluster.local
+        jsonData:
+          derivedFields:
+            - name: TraceID
+              matcherName: traceID
+              url: "$${__value.raw}"
+              datasourceUid: tempo
+              matcherType: label

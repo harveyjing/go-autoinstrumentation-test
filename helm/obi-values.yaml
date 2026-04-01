@@ -1,0 +1,48 @@
+# Preset "application" enables hostPID: true in the DaemonSet, which is required
+# so OBI can see all host processes via /proc and write enriched logs to their
+# stdout file descriptors (/proc/<host-pid>/fd/1).
+
+# preset: network
+preset: application
+
+env:
+  # OTEL_EBPF_LOG_LEVEL: 'debug'
+  OTEL_EBPF_KUBE_CLUSTER_NAME: 'opentelemetry-grafana'
+  OTEL_EBPF_TRACE_PRINTER: 'text'
+  OTEL_EBPF_ENFORCE_SYS_CAPS: 'true'
+  # OTEL_EBPF_AUTO_TARGET_LANGUAGE: 'go'
+
+# extraCapabilities:
+#   - SYS_ADMIN
+
+volumes:
+  - name: bpffs
+    hostPath:
+      path: /sys/fs/bpf
+      type: Directory
+
+volumeMounts:
+  - name: bpffs
+    mountPath: /sys/fs/bpf
+
+# securityContext:
+#   privileged: true
+
+config:
+  data:
+    discovery:
+      instrument:
+        - k8s_namespace: demo
+    otel_metrics_export:
+      endpoint: http://otel-collector-collector:4318
+    otel_traces_export:
+      endpoint: http://otel-collector-collector:4318
+    ebpf:
+      context_propagation: all
+      log_enricher:
+        services:
+          - service:
+              - k8s_namespace: demo
+    attributes:
+      kubernetes:
+        enable: autodetect

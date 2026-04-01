@@ -1,0 +1,51 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go build output
+app/order-service
+
+# Test binary, built with `go test -c`
+*.test
+
+# Go coverage
+*.out
+*.prof
+
+# Dependency directories
+vendor/
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment / secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Claude Code
+.claude/
+
+# Helm
+*.tgz
+
+# Kubernetes
+kubeconfig
+*.kubeconfig
+
+# Temporary files
+tmp/
+*.tmp
+*.log
