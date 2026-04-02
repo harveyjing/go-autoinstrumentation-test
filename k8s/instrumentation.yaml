@@ -1,0 +1,19 @@
+# deprecated
+apiVersion: opentelemetry.io/v1alpha1
+kind: Instrumentation
+metadata:
+  name: go-instrumentation
+  namespace: demo
+spec:
+  exporter:
+    endpoint: http://otel-collector-collector.observability:4318
+  propagators:
+    - tracecontext
+    - baggage
+  # sampler:
+  #   type: parentbased_traceidratio
+  #   argument: "1.0"
+  go:
+    env:
+      - name: OTEL_GO_AUTO_TARGET_EXE
+        value: /app/server

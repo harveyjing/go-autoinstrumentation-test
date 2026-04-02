@@ -19,6 +19,9 @@ spec:
     metadata:
       labels:
         app: order-service
+      annotations:
+        instrumentation.opentelemetry.io/inject-go: "true"
+        instrumentation.opentelemetry.io/otel-go-auto-target-exe: "/app/server"
     spec:
       containers:
         - name: order-service
@@ -50,4 +53,5 @@ spec:
   ports:
     - port: 80
       targetPort: 8080
+      nodePort: 30374
   type: NodePort
