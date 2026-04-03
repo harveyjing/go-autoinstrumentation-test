@@ -11,7 +11,12 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+
+	_ "go.opentelemetry.io/auto/sdk"
 )
 
 // ---------------------------------------------------------------------------
@@ -35,16 +40,16 @@ func (h *traceHandler) Handle(ctx context.Context, r slog.Record) error {
 	sc := trace.SpanContextFromContext(ctx)
 	// fmt.Printf("context: %+v\n", ctx)
 	// Debug: print full SpanContext via fmt (not logger!) to avoid recursion
-	// fmt.Fprintf(os.Stderr, "[DEBUG SpanContext] TraceID=%s SpanID=%s TraceFlags=%s IsRemote=%t IsSampled=%t IsValid=%t HasTraceID=%t HasSpanID=%t\n",
-	// 	sc.TraceID(),
-	// 	sc.SpanID(),
-	// 	sc.TraceFlags(),
-	// 	sc.IsRemote(),
-	// 	sc.IsSampled(),
-	// 	sc.IsValid(),
-	// 	sc.HasTraceID(),
-	// 	sc.HasSpanID(),
-	// )
+	fmt.Fprintf(os.Stderr, "[DEBUG SpanContext] TraceID=%s SpanID=%s TraceFlags=%s IsRemote=%t IsSampled=%t IsValid=%t HasTraceID=%t HasSpanID=%t\n",
+		sc.TraceID(),
+		sc.SpanID(),
+		sc.TraceFlags(),
+		sc.IsRemote(),
+		sc.IsSampled(),
+		sc.IsValid(),
+		sc.HasTraceID(),
+		sc.HasSpanID(),
+	)
 
 	if sc.HasTraceID() {
 		r.AddAttrs(
@@ -75,6 +80,7 @@ var (
 	orders   = make(map[string]Order)
 	ordersMu sync.RWMutex
 	logger   *slog.Logger
+	tracer   = otel.Tracer("order-service")
 )
 
 func main() {
@@ -127,56 +133,182 @@ func randomDelay() {
 }
 
 func handleHealthz(w http.ResponseWriter, r *http.Request) {
-	// fmt.Printf("headers: %+v\n", r.Header)
-	// span := trace.SpanFromContext(r.Context())
+	_, span := tracer.Start(r.Context(), "GET /healthz")
+	defer span.End()
 
-	// fmt.Printf("SpanContext: TraceID=%s SpanID=%s TraceFlags=%s IsRemote=%t IsSampled=%t IsValid=%t HasTraceID=%t HasSpanID=%t\n",
-	// 	span.SpanContext().TraceID(),
-	// 	span.SpanContext().SpanID(),
-	// 	span.SpanContext().TraceFlags(),
-	// 	span.SpanContext().IsRemote(),
-	// 	span.SpanContext().IsSampled(),
-	// 	span.SpanContext().IsValid(),
-	// 	span.SpanContext().HasTraceID(),
-	// 	span.SpanContext().HasSpanID(),
-	// )
-
-	// if span.SpanContext().IsValid() {
-
-	// 	// // Add to your structured logger
-	// 	// logger := slog.With(
-	// 	// 	"trace_id", span.SpanContext().TraceID().String(),
-	// 	// 	"span_id", span.SpanContext().SpanID().String(),
-	// 	// )
-	// 	// Attach logger to context or use directly
-	// 	logger.Info("handling request", "path", r.URL.Path)
-	// }
 	randomDelay() // simulate some processing time
 	w.WriteHeader(http.StatusOK)
-	fmt.Printf(`{"level":"INFO","msg":"raw test"}`)
 	fmt.Fprintln(w, "ok")
 }
 
 func handleListOrders(w http.ResponseWriter, r *http.Request) {
+	ctx, span := tracer.Start(r.Context(), "GET /orders")
+	defer span.End()
+
+	// Step 1 – fetch all orders from the in-memory store
+	list := fetchOrders(ctx)
+	span.SetAttributes(attribute.Int("order.count", len(list)))
+
+	// Step 2 – enrich each order (simulate DB / external lookup per order)
+	for i := range list {
+		list[i] = enrichOrder(ctx, list[i])
+	}
+
+	// Step 3 – filter & sort the order list
+	filtered := filterOrders(ctx, list)
+	span.SetAttributes(attribute.Int("order.filtered_count", len(filtered)))
+
+	// Step 4 – build the JSON response (with occasional simulated error)
+	data, err := buildResponse(ctx, filtered)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to build response")
+		logger.ErrorContext(ctx, "buildResponse failed", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	slog.InfoContext(ctx, "listing orders", "count", len(list), "filtered", len(filtered))
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
+}
+
+// ---------------------------------------------------------------------------
+// Child-span helpers used by handleListOrders for richer trace trees
+// ---------------------------------------------------------------------------
+
+// fetchOrders reads all orders from the in-memory store.
+func fetchOrders(ctx context.Context) []Order {
+	ctx, span := tracer.Start(ctx, "fetchOrders")
+	defer span.End()
+
+	start := time.Now()
+
 	ordersMu.RLock()
 	list := make([]Order, 0, len(orders))
 	for _, o := range orders {
 		list = append(list, o)
-		randomDelay() // simulate processing time for each order to create more interesting traces
 	}
 	ordersMu.RUnlock()
 
-	slog.Info("listing orders", "count", len(list))
-	writeJSON(w, http.StatusOK, list)
+	// simulate datastore latency
+	delay := time.Duration(20+rand.Intn(80)) * time.Millisecond
+	time.Sleep(delay)
+
+	span.SetAttributes(
+		attribute.Int("db.result_count", len(list)),
+		attribute.Int64("db.latency_ms", time.Since(start).Milliseconds()),
+	)
+	logger.InfoContext(ctx, "fetched orders from store", "count", len(list))
+	return list
+}
+
+// enrichOrder simulates looking up extra data for a single order
+// (e.g. warehouse stock, customer info). Each call creates its own span.
+func enrichOrder(ctx context.Context, o Order) Order {
+	ctx, span := tracer.Start(ctx, "enrichOrder")
+	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("order.id", o.ID),
+		attribute.String("order.item", o.Item),
+	)
+
+	// simulate enrichment latency (external service / cache)
+	delay := time.Duration(10+rand.Intn(60)) * time.Millisecond
+	time.Sleep(delay)
+
+	// ~8 % chance of enrichment warning (non-fatal)
+	if rand.Intn(12) == 0 {
+		span.AddEvent("enrichment_degraded", trace.WithAttributes(
+			attribute.String("reason", "cache miss – fell back to slow path"),
+		))
+		logger.WarnContext(ctx, "enrichment degraded", "order_id", o.ID)
+		delay += time.Duration(50+rand.Intn(100)) * time.Millisecond
+		time.Sleep(delay)
+	}
+
+	span.SetAttributes(attribute.Int64("enrich.latency_ms", delay.Milliseconds()))
+	logger.DebugContext(ctx, "enriched order", "order_id", o.ID, "latency_ms", delay.Milliseconds())
+	return o
+}
+
+// filterOrders simulates filtering and sorting the order list
+// (e.g. by status, date range, pagination).
+func filterOrders(ctx context.Context, list []Order) []Order {
+	ctx, span := tracer.Start(ctx, "filterOrders")
+	defer span.End()
+
+	before := len(list)
+
+	// simulate filter processing time
+	delay := time.Duration(15+rand.Intn(50)) * time.Millisecond
+	time.Sleep(delay)
+
+	// randomly drop ~20 % of orders to simulate a real filter
+	filtered := make([]Order, 0, len(list))
+	for _, o := range list {
+		if rand.Intn(5) != 0 { // keep ~80 %
+			filtered = append(filtered, o)
+		}
+	}
+
+	span.SetAttributes(
+		attribute.Int("filter.input_count", before),
+		attribute.Int("filter.output_count", len(filtered)),
+		attribute.Int64("filter.latency_ms", delay.Milliseconds()),
+	)
+	logger.InfoContext(ctx, "filtered orders", "before", before, "after", len(filtered))
+	return filtered
+}
+
+// buildResponse marshals the order list to JSON. ~5 % of the time it
+// injects a simulated serialisation error so error traces appear in Tempo.
+func buildResponse(ctx context.Context, list []Order) ([]byte, error) {
+	_, span := tracer.Start(ctx, "buildResponse")
+	defer span.End()
+
+	// simulate marshalling time
+	delay := time.Duration(5+rand.Intn(30)) * time.Millisecond
+	time.Sleep(delay)
+
+	// ~5 % chance of a simulated error
+	if rand.Intn(20) == 0 {
+		err := fmt.Errorf("simulated serialisation failure")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		logger.ErrorContext(ctx, "buildResponse error", "error", err)
+		return nil, err
+	}
+
+	data, err := json.Marshal(list)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "json marshal failed")
+		return nil, err
+	}
+
+	span.SetAttributes(
+		attribute.Int("response.size_bytes", len(data)),
+		attribute.Int("response.order_count", len(list)),
+		attribute.Int64("response.latency_ms", delay.Milliseconds()),
+	)
+	return data, nil
 }
 
 func handleCreateOrder(w http.ResponseWriter, r *http.Request) {
+	ctx, span := tracer.Start(r.Context(), "POST /orders")
+	defer span.End()
+
 	var input struct {
 		Item     string `json:"item"`
 		Quantity int    `json:"quantity"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		logger.ErrorContext(r.Context(), "invalid request body", "error", err)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "invalid request body")
+		logger.ErrorContext(ctx, "invalid request body", "error", err)
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -189,13 +321,20 @@ func handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: time.Now(),
 	}
 
-	logger.InfoContext(r.Context(), "creating order", "order_id", order.ID, "item", order.Item, "quantity", order.Quantity)
+	span.SetAttributes(
+		attribute.String("order.id", order.ID),
+		attribute.String("order.item", order.Item),
+		attribute.Int("order.quantity", order.Quantity),
+	)
+
+	logger.InfoContext(ctx, "creating order", "order_id", order.ID, "item", order.Item, "quantity", order.Quantity)
 
 	// Call validate endpoint internally — creates a child span in traces
 	validateURL := fmt.Sprintf("http://localhost:%s/orders/%s/validate", getPort(), order.ID)
 	resp, err := http.Post(validateURL, "application/json", nil)
 	if err != nil {
-		logger.ErrorContext(r.Context(), "validation call failed", "order_id", order.ID, "error", err)
+		span.RecordError(err)
+		logger.ErrorContext(ctx, "validation call failed", "order_id", order.ID, "error", err)
 		order.Status = "validation_error"
 	} else {
 		resp.Body.Close()
@@ -210,29 +349,39 @@ func handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 	orders[order.ID] = order
 	ordersMu.Unlock()
 
-	logger.InfoContext(r.Context(), "order created", "order_id", order.ID, "status", order.Status)
+	span.SetAttributes(attribute.String("order.status", order.Status))
+	logger.InfoContext(ctx, "order created", "order_id", order.ID, "status", order.Status)
 	writeJSON(w, http.StatusCreated, order)
 }
 
 func handleGetOrder(w http.ResponseWriter, r *http.Request) {
+	ctx, span := tracer.Start(r.Context(), "GET /orders/{id}")
+	defer span.End()
+
 	id := r.PathValue("id")
+	span.SetAttributes(attribute.String("order.id", id))
 
 	ordersMu.RLock()
 	order, ok := orders[id]
 	ordersMu.RUnlock()
 
 	if !ok {
-		logger.WarnContext(r.Context(), "order not found", "order_id", id)
+		span.SetStatus(codes.Error, "order not found")
+		logger.WarnContext(ctx, "order not found", "order_id", id)
 		http.Error(w, "order not found", http.StatusNotFound)
 		return
 	}
 
-	logger.InfoContext(r.Context(), "fetched order", "order_id", id)
+	logger.InfoContext(ctx, "fetched order", "order_id", id)
 	writeJSON(w, http.StatusOK, order)
 }
 
 func handleValidateOrder(w http.ResponseWriter, r *http.Request) {
+	ctx, span := tracer.Start(r.Context(), "POST /orders/{id}/validate")
+	defer span.End()
+
 	id := r.PathValue("id")
+	span.SetAttributes(attribute.String("order.id", id))
 
 	// Simulate processing latency
 	delay := time.Duration(50+rand.Intn(200)) * time.Millisecond
@@ -240,12 +389,14 @@ func handleValidateOrder(w http.ResponseWriter, r *http.Request) {
 
 	// ~10% chance of failure for interesting error traces
 	if rand.Intn(10) == 0 {
-		logger.ErrorContext(r.Context(), "validation failed", "order_id", id, "reason", "random failure")
+		span.SetStatus(codes.Error, "validation failed")
+		logger.ErrorContext(ctx, "validation failed", "order_id", id, "reason", "random failure")
 		http.Error(w, "validation failed", http.StatusInternalServerError)
 		return
 	}
 
-	logger.InfoContext(r.Context(), "order validated", "order_id", id, "latency_ms", delay.Milliseconds())
+	span.SetAttributes(attribute.Int64("validate.latency_ms", delay.Milliseconds()))
+	logger.InfoContext(ctx, "order validated", "order_id", id, "latency_ms", delay.Milliseconds())
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintln(w, "validated")
 }

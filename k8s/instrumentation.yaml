@@ -13,7 +13,7 @@ spec:
   # sampler:
   #   type: parentbased_traceidratio
   #   argument: "1.0"
-  go:
-    env:
-      - name: OTEL_GO_AUTO_TARGET_EXE
-        value: /app/server
+  # go:
+  #   env:
+  #     - name: OTEL_GO_AUTO_TARGET_EXE
+  #       value: /app/server
