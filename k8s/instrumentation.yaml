@@ -6,7 +6,7 @@ metadata:
   namespace: demo
 spec:
   exporter:
-    endpoint: http://otel-collector-collector.observability:4318
+    endpoint: http://otel-collector-collector.opentelemetry-operator-system:4318
   propagators:
     - tracecontext
     - baggage

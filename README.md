@@ -2,7 +2,8 @@
 
 ```bash
 cd app && docker buildx build --platform=linux/amd64 -t order-service:latest .
-ctr image import order-service:latest
+docker save -o order-service.tar order-service:latest
+k3s ctr images import order-service.tar
 kubectl apply -f k8s/order-service.yaml
 ```
 
@@ -14,7 +15,7 @@ helm repo update
 ```
 
 ```bash
-helm upgrade my-opentelemetry-operator open-telemetry/opentelemetry-operator -n observability \
+helm upgrade opentelemetry-operator open-telemetry/opentelemetry-operator -n opentelemetry-operator-system \
   -f helm/otel-operator-values.yaml --create-namespace --install
 kubectl apply -f k8s/otel-collector.yaml
 ```
@@ -27,6 +28,12 @@ helm upgrade grafana grafana/grafana -n observability -f helm/grafana-values.yam
 helm upgrade alloy grafana/alloy -n observability -f helm/alloy-values.yaml --install
 ```
 
+# If install opentelemetry-go-instrumentation (which works with Auto SDK with manul instructionation)
+```bash
+kubectl apply -f k8s/instrumentation.yaml
+```
+
+# If install opentelemetry-ebpf-instrumentation(OBI)
 ```bash
 helm upgrade obi open-telemetry/opentelemetry-ebpf-instrumentation \
   -n observability -f helm/obi-values.yaml --install
