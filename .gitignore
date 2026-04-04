@@ -6,7 +6,8 @@
 *.dylib
 
 # Go build output
-app/order-service
+cmd/order-service/order-service
+cmd/validation-service/validation-service
 
 # Test binary, built with `go test -c`
 *.test

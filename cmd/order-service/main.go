@@ -7,13 +7,16 @@ import (
 	"log/slog"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 
 	_ "go.opentelemetry.io/auto/sdk"
@@ -329,16 +332,13 @@ func handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 
 	logger.InfoContext(ctx, "creating order", "order_id", order.ID, "item", order.Item, "quantity", order.Quantity)
 
-	// Call validate endpoint internally — creates a child span in traces
-	validateURL := fmt.Sprintf("http://localhost:%s/orders/%s/validate", getPort(), order.ID)
-	resp, err := http.Post(validateURL, "application/json", nil)
+	status, err := callValidationService(ctx, order.ID)
 	if err != nil {
 		span.RecordError(err)
 		logger.ErrorContext(ctx, "validation call failed", "order_id", order.ID, "error", err)
 		order.Status = "validation_error"
 	} else {
-		resp.Body.Close()
-		if resp.StatusCode == http.StatusOK {
+		if status == http.StatusOK {
 			order.Status = "validated"
 		} else {
 			order.Status = "validation_failed"
@@ -413,4 +413,45 @@ func getPort() string {
 		port = "8080"
 	}
 	return port
+}
+
+func callValidationService(ctx context.Context, orderID string) (int, error) {
+	ctx, span := tracer.Start(ctx, "callValidationService")
+	defer span.End()
+
+	validateURL := fmt.Sprintf("%s/validate/%s", strings.TrimRight(getValidationServiceURL(), "/"), url.PathEscape(orderID))
+	span.SetAttributes(
+		attribute.String("validation.url", validateURL),
+		attribute.String("order.id", orderID),
+	)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, validateURL, nil)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to build validation request")
+		return 0, err
+	}
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "validation request failed")
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	span.SetAttributes(attribute.Int("http.status_code", resp.StatusCode))
+	if resp.StatusCode >= http.StatusBadRequest {
+		span.SetStatus(codes.Error, fmt.Sprintf("validation returned %d", resp.StatusCode))
+	}
+
+	return resp.StatusCode, nil
+}
+
+func getValidationServiceURL() string {
+	if baseURL := os.Getenv("VALIDATION_SERVICE_URL"); baseURL != "" {
+		return baseURL
+	}
+	return "http://validation-service.demo.svc.cluster.local"
 }
