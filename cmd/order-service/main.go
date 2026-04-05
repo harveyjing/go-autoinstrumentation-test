@@ -41,19 +41,6 @@ func (h *traceHandler) Enabled(ctx context.Context, level slog.Level) bool {
 
 func (h *traceHandler) Handle(ctx context.Context, r slog.Record) error {
 	sc := trace.SpanContextFromContext(ctx)
-	// fmt.Printf("context: %+v\n", ctx)
-	// Debug: print full SpanContext via fmt (not logger!) to avoid recursion
-	fmt.Fprintf(os.Stderr, "[DEBUG SpanContext] TraceID=%s SpanID=%s TraceFlags=%s IsRemote=%t IsSampled=%t IsValid=%t HasTraceID=%t HasSpanID=%t\n",
-		sc.TraceID(),
-		sc.SpanID(),
-		sc.TraceFlags(),
-		sc.IsRemote(),
-		sc.IsSampled(),
-		sc.IsValid(),
-		sc.HasTraceID(),
-		sc.HasSpanID(),
-	)
-
 	if sc.HasTraceID() {
 		r.AddAttrs(
 			slog.String("trace_id", sc.TraceID().String()),
@@ -257,11 +244,11 @@ func filterOrders(ctx context.Context, list []Order) []Order {
 		}
 	}
 
-	span.SetAttributes(
-		attribute.Int("filter.input_count", before),
-		attribute.Int("filter.output_count", len(filtered)),
-		attribute.Int64("filter.latency_ms", delay.Milliseconds()),
-	)
+	// span.SetAttributes(
+	// 	attribute.Int("filter.input_count", before),
+	// 	attribute.Int("filter.output_count", len(filtered)),
+	// 	attribute.Int64("filter.latency_ms", delay.Milliseconds()),
+	// )
 	logger.InfoContext(ctx, "filtered orders", "before", before, "after", len(filtered))
 	return filtered
 }
