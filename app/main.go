@@ -153,7 +153,7 @@ func handleHealthz(w http.ResponseWriter, r *http.Request) {
 	// }
 	randomDelay() // simulate some processing time
 	w.WriteHeader(http.StatusOK)
-	fmt.Printf(`{"level":"INFO","msg":"raw test"}`)
+	fmt.Println(`{"level":"INFO","msg":"raw test"}`)
 	fmt.Fprintln(w, "ok")
 }
 
