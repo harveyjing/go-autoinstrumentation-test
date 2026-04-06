@@ -18,6 +18,13 @@ docker save -o validation-service.tar validation-service:latest
 k3s ctr images import validation-service.tar
 ```
 
+## Deploy demo services
+
+```bash
+kubectl apply -f deploy/k8s/order-service.yaml
+kubectl apply -f deploy/k8s/validation-service.yaml
+```
+
 ## Install observability components
 
 ```bash
@@ -42,12 +49,6 @@ helm upgrade grafana grafana/grafana -n observability -f deploy/helm/grafana-val
 helm upgrade alloy grafana/alloy -n observability -f deploy/helm/alloy-values.yaml --install
 ```
 
-## Deploy demo services
-
-```bash
-kubectl apply -f deploy/k8s/order-service.yaml
-kubectl apply -f deploy/k8s/validation-service.yaml
-```
 
 ## Generate a distributed trace
 
