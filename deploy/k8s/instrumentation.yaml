@@ -15,3 +15,7 @@ spec:
     env:
       - name: OTEL_SERVICE_NAME
         value: nginx-gateway
+  go:
+    env:
+      - name: OTEL_EXPORTER_OTLP_ENDPOINT
+        value: http://otel-collector-collector.opentelemetry-operator-system:4318
