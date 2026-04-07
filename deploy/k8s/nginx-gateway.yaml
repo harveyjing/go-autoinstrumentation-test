@@ -35,6 +35,9 @@ data:
             }
         }
     }
+  # Override the default nginx static file config
+  default.conf: |
+    # empty - disabled in favor of proxy_pass to order-service
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -65,6 +68,9 @@ spec:
             - name: nginx-config
               mountPath: /etc/nginx/nginx.conf
               subPath: nginx.conf
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
           livenessProbe:
             httpGet:
               path: /healthz
