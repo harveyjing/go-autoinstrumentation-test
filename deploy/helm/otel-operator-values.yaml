@@ -4,6 +4,8 @@ manager:
   autoInstrumentation:
     go:
       enabled: true
+  extraArgs:
+    - --enable-nginx-instrumentation
 
 admissionWebhooks:
   certManager:
