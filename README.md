@@ -1,10 +1,11 @@
 
 # OpenTelemetry Microservice Trace Demo
 
-This repo demonstrates tracing across two Go services in Kubernetes:
+This repo demonstrates tracing across Go services behind an nginx gateway in Kubernetes:
 
-- `order-service`: entrypoint service
-- `validation-service`: downstream service called by `order-service`
+- `nginx-gateway`: entry point; auto-instrumented via the OTel Operator (`inject-nginx`)
+- `order-service`: upstream Go service called by nginx
+- `validation-service`: downstream Go service called by `order-service`
 
 ## Build and load images into k3s
 
@@ -23,6 +24,22 @@ k3s ctr images import validation-service.tar
 ```bash
 kubectl apply -f deploy/k8s/order-service.yaml
 kubectl apply -f deploy/k8s/validation-service.yaml
+```
+
+## Deploy nginx gateway
+
+The nginx gateway uses the OTel Operator's native nginx auto-instrumentation — no custom image required.
+The operator injects an init container that installs the OTel webserver module and patches the nginx config.
+
+```bash
+kubectl apply -f deploy/k8s/nginx-gateway.yaml
+```
+
+Verify the instrumentation init container completed:
+
+```bash
+kubectl describe pod -n demo -l app=nginx-gateway
+# Expect: Init Container "opentelemetry-auto-instrumentation-nginx" → State: Terminated (Completed)
 ```
 
 ## Install observability components
@@ -58,7 +75,8 @@ curl -X POST http://localhost:30374/orders \
   -d '{"item":"coffee","quantity":2}'
 ```
 
-The request should create a trace with spans from both `order-service` and `validation-service` in Tempo.
+The request flows through nginx → order-service → validation-service.
+In Grafana Tempo the trace should show a root `nginx-gateway` span with child spans from both Go services.
 
 ## Optional: install OpenTelemetry eBPF instrumentation
 

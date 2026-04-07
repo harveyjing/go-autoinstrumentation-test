@@ -58,5 +58,4 @@ spec:
   ports:
     - port: 80
       targetPort: 8080
-      nodePort: 30374
-  type: NodePort
+  type: ClusterIP
