@@ -10,7 +10,7 @@ spec:
     - tracecontext
     - baggage
   nginx:
-    image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-nginx:latest
+    image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-apache-httpd:1.0.4
     configFile: /etc/nginx/nginx.conf
     env:
       - name: OTEL_SERVICE_NAME
