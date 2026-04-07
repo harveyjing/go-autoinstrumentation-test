@@ -48,8 +48,8 @@ spec:
     spec:
       containers:
         - name: nginx
-          # Operator supports: 1.22.0, 1.23.0, 1.23.1
-          image: nginx:1.23.1
+          # OTel webserver SDK 1.0.4 ships modules for nginx 1.24.0 and 1.25.3 only
+          image: nginx:1.25.3
           ports:
             - containerPort: 80
           volumeMounts:
