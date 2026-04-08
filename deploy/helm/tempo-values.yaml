@@ -6,3 +6,24 @@ tempo:
           endpoint: "0.0.0.0:4317"
         http:
           endpoint: "0.0.0.0:4318"
+
+  metricsGenerator:
+    enabled: true
+    remoteWriteUrl: "http://prometheus-server.observability.svc.cluster.local/api/v1/write"
+    processor:
+      service_graphs:
+        wait: 10s
+        max_items: 10000
+      span_metrics:
+        enable_target_info: true
+    registry:
+      collection_interval: 15s
+      external_labels:
+        cluster: opentelemetry-grafana
+
+  overrides:
+    defaults:
+      metrics_generator:
+        processors:
+          - service-graphs
+          - span-metrics
