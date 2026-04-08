@@ -1,6 +1,7 @@
 server:
   extraFlags:
     - "web.enable-remote-write-receiver"
+    - "web.enable-lifecycle"
     - "enable-feature=exemplar-storage"
 
 alertmanager:
