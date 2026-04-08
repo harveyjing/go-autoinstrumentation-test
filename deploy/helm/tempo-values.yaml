@@ -16,6 +16,10 @@ tempo:
         max_items: 10000
       span_metrics:
         enable_target_info: true
+      local_blocks:
+        flush_to_storage: true
+        filter_server_spans: false
+        max_block_duration: 1m
     registry:
       collection_interval: 15s
       external_labels:
@@ -27,3 +31,4 @@ tempo:
         processors:
           - service-graphs
           - span-metrics
+          - local-blocks
